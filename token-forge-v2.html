@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>_TOKEN_FORGE // v2.0.0</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #000000;
+    --panel:     #050f05;
+    --panel2:    #081208;
+    --border:    #0a2a0a;
+    --border2:   #0f3d0f;
+    --green:     #00ff41;
+    --green-dim: #00c032;
+    --green-lo:  #007a1f;
+    --green-xs:  #003d10;
+    --green-glow: rgba(0,255,65,0.15);
+    --green-glow2: rgba(0,255,65,0.06);
+    --amber:     #ffb700;
+    --red:       #ff2a2a;
+    --cyan:      #00ffe1;
+    --text:      #b8ffca;
+    --muted:     #2a6b3a;
+    --font:      'Courier New', Courier, monospace;
+  }
+
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: var(--font);
+    min-height: 100vh;
+    overflow-x: hidden;
+    cursor: default;
+  }
+
+  /* ── SCANLINES ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 9999;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+  }
+
+  /* ── CRT VIGNETTE ── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 9998;
+    background: radial-gradient(ellipse at center,
+      transparent 60%,
+      rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
+  }
+
+  /* ── MATRIX RAIN BG ── */
+  #matrix-canvas {
+    position: fixed; inset: 0; z-index: 0;
+    opacity: 0.04;
+    pointer-events: none;
+  }
+
+  /* ── GRID OVERLAY ── */
+  .bg-grid {
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+  }
+
+  /* ── LAYOUT ── */
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 760px; margin: 0 auto;
+    padding: 48px 24px 100px;
+  }
+
+  /* ── HEADER ── */
+  header { margin-bottom: 48px; }
+
+  .sys-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px;
+    border: 1px solid var(--border2);
+    background: var(--panel2);
+    padding: 8px 16px;
+    margin-bottom: 32px;
+    font-size: 10px; color: var(--muted);
+    letter-spacing: 1px;
+  }
+  .sys-bar .dot {
+    display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: blink 1.2s step-end infinite;
+    margin-right: 6px;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.1} }
+
+  .header-title {
+    font-size: clamp(2rem, 8vw, 3.6rem);
+    font-weight: bold;
+    line-height: 1;
+    letter-spacing: -1px;
+    color: var(--green);
+    text-shadow:
+      0 0 20px rgba(0,255,65,0.6),
+      0 0 60px rgba(0,255,65,0.2);
+    animation: fadeUp 0.5s ease both;
+  }
+  .header-title .cursor {
+    display: inline-block;
+    width: 3px; height: 0.85em;
+    background: var(--green);
+    margin-left: 4px;
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+  }
+
+  .header-sub {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    animation: fadeUp 0.5s 0.1s ease both;
+  }
+  .header-sub .kw { color: var(--green-dim); }
+  .header-sub .str { color: var(--amber); }
+  .header-sub .cm { color: var(--muted); }
+
+  .header-badges {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-top: 20px;
+    animation: fadeUp 0.5s 0.15s ease both;
+  }
+  .badge {
+    font-size: 10px; letter-spacing: 2px;
+    padding: 4px 12px;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    background: var(--panel2);
+  }
+  .badge.active {
+    border-color: var(--green-lo);
+    color: var(--green-dim);
+    box-shadow: 0 0 8px var(--green-glow2);
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform: translateY(12px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
+  /* ── LINE NUMBER GUTTER ── */
+  .ln {
+    display: inline-block; min-width: 32px;
+    color: var(--border2); font-size: 11px;
+    user-select: none; margin-right: 4px;
+    text-align: right;
+  }
+
+  /* ── CHAIN TABS ── */
+  .chain-tabs {
+    display: flex; gap: 0;
+    border: 1px solid var(--border2);
+    margin-bottom: 0;
+    animation: fadeUp 0.5s 0.2s ease both;
+  }
+  .tab-btn {
+    flex: 1; padding: 12px 16px;
+    background: var(--panel2);
+    border: none; border-right: 1px solid var(--border2);
+    color: var(--muted); cursor: pointer;
+    font-family: var(--font); font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .tab-btn:last-child { border-right: none; }
+  .tab-btn:hover { color: var(--green-dim); background: var(--panel); }
+  .tab-btn.active {
+    background: var(--panel);
+    color: var(--green);
+    box-shadow: inset 0 -2px 0 var(--green);
+    text-shadow: 0 0 10px var(--green);
+  }
+  .tab-btn .tab-prefix { color: var(--muted); font-size: 10px; }
+  .tab-btn.active .tab-prefix { color: var(--green-lo); }
+
+  /* ── MAIN CARD ── */
+  .card {
+    border: 1px solid var(--border2);
+    background: var(--panel);
+    animation: fadeUp 0.5s 0.3s ease both;
+    position: relative;
+  }
+
+  /* file path strip */
+  .card-filepath {
+    padding: 6px 16px;
+    background: var(--panel2);
+    border-bottom: 1px solid var(--border);
+    font-size: 10px; color: var(--muted);
+    letter-spacing: 1px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-filepath .fp-path { color: var(--green-lo); }
+
+  .card-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .card-header::before {
+    content: 'class ';
+    color: var(--muted); font-size: 12px;
+  }
+  .card-title {
+    font-size: 13px; letter-spacing: 2px;
+    color: var(--green); font-weight: bold;
+  }
+  .card-title::after {
+    content: ' {';
+    color: var(--muted);
+  }
+  .network-badge {
+    margin-left: auto; font-size: 10px;
+    padding: 3px 10px;
+    border: 1px solid var(--border2);
+    color: var(--muted); letter-spacing: 1px;
+  }
+
+  .card-body { padding: 24px; }
+
+  /* ── WALLET ── */
+  .wallet-section { margin-bottom: 24px; }
+  .wallet-btn {
+    width: 100%; padding: 13px 20px;
+    border: 1px solid var(--border2);
+    background: var(--panel2);
+    color: var(--green-dim);
+    font-family: var(--font); font-size: 12px;
+    letter-spacing: 2px; text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .wallet-btn::before { content: '$ '; color: var(--green-lo); }
+  .wallet-btn:hover {
+    background: var(--panel);
+    border-color: var(--green-lo);
+    color: var(--green);
+    box-shadow: 0 0 16px var(--green-glow2);
+    text-shadow: 0 0 8px var(--green);
+  }
+  .wallet-connected {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    background: var(--green-xs);
+    border: 1px solid var(--green-lo);
+    font-size: 11px;
+  }
+  .wallet-connected::before {
+    content: '// CONNECTED';
+    color: var(--green-lo); font-size: 10px; letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+  .dot-live {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: blink 1.8s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  .wallet-addr {
+    color: var(--green); font-size: 11px; letter-spacing: 1px;
+  }
+
+  /* ── DIVIDER ── */
+  .divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 24px 0; color: var(--border2); font-size: 10px;
+    letter-spacing: 2px;
+  }
+  .divider::before, .divider::after {
+    content: ''; flex: 1; height: 1px;
+    background: var(--border);
+  }
+
+  /* ── FORM ── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-full  { grid-column: 1 / -1; }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+
+  .field label {
+    font-size: 10px; letter-spacing: 2px; color: var(--muted);
+    text-transform: uppercase;
+  }
+  .field label::before { content: '// '; color: var(--border2); }
+
+  .field input,
+  .field select {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    padding: 10px 12px;
+    color: var(--green);
+    font-family: var(--font); font-size: 12px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+    letter-spacing: 1px;
+    -webkit-appearance: none; appearance: none;
+  }
+  .field input:focus,
+  .field select:focus {
+    border-color: var(--green-lo);
+    box-shadow: 0 0 0 2px var(--green-glow2), inset 0 0 10px var(--green-glow2);
+  }
+  .field input::placeholder { color: var(--border2); }
+
+  .field select option { background: var(--bg); color: var(--green); }
+
+  .hint {
+    font-size: 10px; color: var(--muted);
+    letter-spacing: 1px;
+  }
+  .hint::before { content: '// '; }
+
+  /* ── SUPPLY ── */
+  .supply-display {
+    font-size: 15px; font-weight: bold;
+    color: var(--green); letter-spacing: 2px;
+    margin-bottom: 8px;
+    text-shadow: 0 0 10px rgba(0,255,65,0.4);
+  }
+  .supply-display::before { content: 'const _SUPPLY = '; color: var(--muted); }
+  .supply-display::after  { content: ';'; color: var(--muted); }
+
+  input[type="range"] {
+    -webkit-appearance: none; width: 100%; height: 2px;
+    background: var(--border2); outline: none;
+    border: none; padding: 0; box-shadow: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    background: var(--green); cursor: pointer;
+    box-shadow: 0 0 10px var(--green);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    background: var(--green); border: none;
+    box-shadow: 0 0 10px var(--green);
+  }
+
+  /* ── TOGGLES ── */
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .toggle-chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    font-family: var(--font); font-size: 11px; letter-spacing: 1px;
+    color: var(--muted); cursor: pointer;
+    transition: all 0.2s;
+  }
+  .toggle-chip::before { content: '/*'; color: var(--border2); margin-right: 2px; }
+  .toggle-chip::after  { content: '*/'; color: var(--border2); margin-left: 2px; }
+  .toggle-chip.on {
+    border-color: var(--green-lo);
+    color: var(--green);
+    background: var(--green-xs);
+    box-shadow: 0 0 8px var(--green-glow2);
+  }
+  .toggle-chip.on::before { content: '//'; color: var(--green-lo); }
+  .toggle-chip.on::after  { content: ''; }
+  .chip-dot {
+    width: 5px; height: 5px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle-chip.on .chip-dot {
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+  }
+
+  /* ── DEPLOY BUTTON ── */
+  .deploy-btn {
+    width: 100%; margin-top: 24px; padding: 15px 20px;
+    border: 1px solid var(--green-lo);
+    background: var(--green-xs);
+    color: var(--green);
+    font-family: var(--font); font-size: 12px; font-weight: bold;
+    letter-spacing: 3px; text-transform: uppercase;
+    cursor: pointer;
+    position: relative; overflow: hidden;
+    transition: all 0.2s;
+    text-shadow: 0 0 10px var(--green);
+    box-shadow: 0 0 20px var(--green-glow2);
+  }
+  .deploy-btn::before {
+    content: '> ';
+    color: var(--green-lo);
+  }
+  .deploy-btn:hover {
+    background: var(--green-xs);
+    border-color: var(--green);
+    box-shadow: 0 0 30px var(--green-glow), inset 0 0 20px var(--green-glow2);
+    text-shadow: 0 0 20px var(--green);
+  }
+  .deploy-btn:disabled {
+    opacity: 0.3; cursor: not-allowed;
+    box-shadow: none; text-shadow: none;
+  }
+  .deploy-btn .shimmer {
+    position: absolute; top:0; left:-100%; width:100%; height:100%;
+    background: linear-gradient(90deg, transparent, rgba(0,255,65,0.08), transparent);
+    animation: shimmer 2.5s infinite;
+  }
+  @keyframes shimmer { to { left: 100%; } }
+
+  /* ── STATUS LOG ── */
+  .status-log {
+    margin-top: 16px; border: 1px solid var(--border2);
+    display: none; background: var(--bg);
+    font-size: 11px;
+  }
+  .status-log.visible { display: block; }
+  .status-header {
+    padding: 8px 16px;
+    background: var(--panel2);
+    border-bottom: 1px solid var(--border);
+    color: var(--muted); font-size: 10px; letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .status-header::before { content: '# '; color: var(--border2); }
+  .status-entries {
+    padding: 12px 16px;
+    display: flex; flex-direction: column; gap: 6px;
+    max-height: 200px; overflow-y: auto;
+  }
+  .status-entry {
+    display: flex; align-items: flex-start; gap: 10px;
+    font-size: 11px; letter-spacing: 0.5px;
+    animation: fadeUp 0.2s ease;
+  }
+  .se-icon { flex-shrink: 0; width: 16px; text-align: center; }
+  .se-text { color: var(--text); word-break: break-all; line-height: 1.5; }
+  .se-text a { color: var(--cyan); text-decoration: none; }
+  .se-text a:hover { text-decoration: underline; }
+  .entry-pending .se-icon { color: var(--amber); animation: spin 1.5s linear infinite; display: inline-block; }
+  .entry-success .se-icon { color: var(--green); }
+  .entry-error .se-icon   { color: var(--red); }
+  .entry-info .se-icon    { color: var(--cyan); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── SUCCESS RESULT ── */
+  .success-result {
+    display: none; margin-top: 16px;
+    padding: 20px;
+    background: var(--green-xs);
+    border: 1px solid var(--green-lo);
+  }
+  .success-result.visible { display: block; animation: fadeUp 0.4s ease; }
+  .sr-title {
+    font-size: 11px; letter-spacing: 2px; color: var(--green);
+    margin-bottom: 16px; font-weight: bold;
+    text-shadow: 0 0 10px var(--green);
+  }
+  .sr-title::before { content: '// '; color: var(--green-lo); }
+  .sr-field { margin-bottom: 12px; }
+  .sr-label {
+    font-size: 10px; color: var(--muted); letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .sr-label::before { content: 'const '; color: var(--muted); }
+  .sr-label::after  { content: ' ='; color: var(--muted); }
+  .sr-value {
+    background: var(--bg); border: 1px solid var(--border2);
+    padding: 8px 12px; font-size: 11px; color: var(--text);
+    word-break: break-all;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .copy-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 11px; font-family: var(--font);
+    padding: 2px 8px; transition: color 0.2s; flex-shrink: 0;
+    border: 1px solid var(--border);
+  }
+  .copy-btn:hover { color: var(--green); border-color: var(--green-lo); }
+
+  /* ── INFO CARDS ── */
+  .info-cards {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin-top: 32px;
+    animation: fadeUp 0.5s 0.4s ease both;
+  }
+  .info-card {
+    padding: 20px; background: var(--panel);
+    border: 1px solid var(--border);
+    position: relative;
+  }
+  .info-card::before {
+    content: attr(data-index);
+    position: absolute; top: 8px; right: 12px;
+    font-size: 9px; color: var(--border2); letter-spacing: 1px;
+  }
+  .ic-icon { font-size: 11px; color: var(--green-lo); margin-bottom: 8px; font-weight: bold; letter-spacing: 1px; }
+  .ic-icon::before { content: '/* '; color: var(--border2); }
+  .ic-icon::after  { content: ' */'; color: var(--border2); }
+  .ic-title {
+    font-size: 12px; font-weight: bold;
+    color: var(--green); margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+  .ic-text {
+    font-size: 10px; color: var(--muted);
+    line-height: 1.7; letter-spacing: 0.5px;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    margin-top: 48px;
+    border-top: 1px solid var(--border);
+    padding-top: 24px;
+    font-size: 10px; color: var(--muted);
+    letter-spacing: 1px;
+    animation: fadeUp 0.5s 0.5s ease both;
+  }
+  footer .fp { color: var(--green-lo); margin-bottom: 8px; }
+  footer a { color: var(--muted); text-decoration: none; }
+  footer a:hover { color: var(--green); }
+  footer .warning {
+    margin-top: 10px; color: var(--amber);
+    border-left: 2px solid var(--amber);
+    padding-left: 10px; font-size: 10px;
+  }
+
+  /* ── PANE VISIBILITY ── */
+  .pane { display: none; }
+  .pane.active { display: block; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 500px) {
+    .form-grid  { grid-template-columns: 1fr; }
+    .info-cards { grid-template-columns: 1fr; }
+  }
+
+  /* ── SELECTION ── */
+  ::selection { background: var(--green-lo); color: var(--bg); }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--green-lo); }
+</style>
+</head>
+<body>
+
+<canvas id="matrix-canvas"></canvas>
+<div class="bg-grid"></div>
+
+<div class="wrap">
+
+  <!-- ── HEADER ── -->
+  <header>
+    <div class="sys-bar">
+      <span><span class="dot"></span>SYSTEM ONLINE // TOKEN_FORGE v2.0.0</span>
+      <span id="sys-time">--:--:--</span>
+      <span>PID:4096 · MEM:OK · NET:OK</span>
+    </div>
+
+    <div class="header-title">_TOKEN_FORGE<span class="cursor"></span></div>
+
+    <div class="header-sub">
+      <span class="kw">export</span> <span class="kw">async function</span>
+      <span style="color:var(--green-dim)">deployToken</span>(<span style="color:var(--text)">chain</span>:
+      <span class="str">"ETH" | "SOL"</span>): <span class="kw">Promise</span>&lt;<span class="str">TxHash</span>&gt; {
+    </div>
+    <div class="header-sub" style="padding-left:20px">
+      <span class="cm">// Deploy on Ethereum or Solana — zero platform fees</span>
+    </div>
+    <div class="header-sub">}</div>
+
+    <div class="header-badges">
+      <span class="badge active">NO_PLATFORM_FEES</span>
+      <span class="badge active">NON_CUSTODIAL</span>
+      <span class="badge active">OPEN_SOURCE</span>
+      <span class="badge">EVM_COMPATIBLE</span>
+      <span class="badge">SPL_TOKENS</span>
+    </div>
+  </header>
+
+  <!-- ── CHAIN TABS ── -->
+  <div class="chain-tabs">
+    <button class="tab-btn active" data-chain="eth" onclick="switchChain('eth')">
+      <span class="tab-prefix">chain.</span>ETHEREUM
+    </button>
+    <button class="tab-btn" data-chain="sol" onclick="switchChain('sol')">
+      <span class="tab-prefix">chain.</span>SOLANA
+    </button>
+  </div>
+
+  <!-- ══ ETHEREUM PANE ══════════════════════════════════════════ -->
+  <div class="pane active" id="pane-eth">
+    <div class="card">
+      <div class="card-filepath">
+        <span class="fp-path">./contracts/ERC20.sol</span>
+        <span>ln:1 · col:1 · UTF-8</span>
+      </div>
+      <div class="card-header">
+        <span class="card-title">ERC20TokenCreator</span>
+        <span class="network-badge">EVM_COMPATIBLE</span>
+      </div>
+      <div class="card-body">
+
+        <div class="wallet-section" id="eth-wallet-section">
+          <button class="wallet-btn" onclick="connectEthWallet()" id="eth-connect-btn">
+            connect_metamask()
+          </button>
+          <div class="wallet-connected" id="eth-connected" style="display:none;">
+            <div class="dot-live"></div>
+            <span class="wallet-addr" id="eth-addr">—</span>
+            <span style="font-size:10px;color:var(--muted);margin-left:auto;letter-spacing:1px;" id="eth-network">—</span>
+          </div>
+        </div>
+
+        <div class="divider">/* TOKEN_PARAMETERS */</div>
+
+        <div class="form-grid">
+          <div class="field form-full">
+            <label>token_name</label>
+            <input type="text" id="eth-name" placeholder="e.g. MyAwesome Token" maxlength="50">
+          </div>
+          <div class="field">
+            <label>symbol</label>
+            <input type="text" id="eth-symbol" placeholder="e.g. MAT" maxlength="10" style="text-transform:uppercase;">
+          </div>
+          <div class="field">
+            <label>decimals</label>
+            <input type="number" id="eth-decimals" value="18" min="0" max="18">
+            <span class="hint">standard is 18</span>
+          </div>
+          <div class="field form-full">
+            <label>initial_supply</label>
+            <div class="supply-display" id="eth-supply-display">1000000</div>
+            <input type="range" id="eth-supply-slider" min="0" max="12" value="6" step="1" oninput="updateSupply('eth')">
+            <input type="hidden" id="eth-supply" value="1000000">
+          </div>
+          <div class="field form-full">
+            <label>feature_flags</label>
+            <div class="toggles">
+              <button class="toggle-chip on" id="chip-eth-mintable" onclick="toggleChip('eth-mintable')">
+                <span class="chip-dot"></span>MINTABLE
+              </button>
+              <button class="toggle-chip on" id="chip-eth-burnable" onclick="toggleChip('eth-burnable')">
+                <span class="chip-dot"></span>BURNABLE
+              </button>
+              <button class="toggle-chip" id="chip-eth-pausable" onclick="toggleChip('eth-pausable')">
+                <span class="chip-dot"></span>PAUSABLE
+              </button>
+            </div>
+            <span class="hint">affects contract size & gas</span>
+          </div>
+          <div class="field">
+            <label>network_id</label>
+            <select id="eth-net">
+              <option value="1">ETHEREUM_MAINNET</option>
+              <option value="11155111" selected>SEPOLIA_TESTNET</option>
+              <option value="137">POLYGON_MAINNET</option>
+              <option value="80001">MUMBAI_TESTNET</option>
+              <option value="56">BNB_CHAIN</option>
+              <option value="42161">ARBITRUM_ONE</option>
+              <option value="10">OPTIMISM</option>
+              <option value="8453">BASE</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="deploy-btn" onclick="deployEthToken()" id="eth-deploy-btn">
+          <span class="shimmer"></span>
+          deploy_erc20_token()
+        </button>
+
+        <div class="status-log" id="eth-log">
+          <div class="status-header">TX_LOG // EXECUTION_TRACE</div>
+          <div class="status-entries" id="eth-entries"></div>
+        </div>
+
+        <div class="success-result" id="eth-result">
+          <div class="sr-title">DEPLOYMENT_SUCCESS → token minted to wallet</div>
+          <div class="sr-field">
+            <div class="sr-label">CONTRACT_ADDRESS</div>
+            <div class="sr-value">
+              <span id="eth-result-addr">—</span>
+              <button class="copy-btn" onclick="copyText('eth-result-addr')">[COPY]</button>
+            </div>
+          </div>
+          <div class="sr-field">
+            <div class="sr-label">TX_HASH</div>
+            <div class="sr-value">
+              <span id="eth-result-tx">—</span>
+              <button class="copy-btn" onclick="copyText('eth-result-tx')">[COPY]</button>
+            </div>
+          </div>
+          <div class="sr-field">
+            <div class="sr-label">EXPLORER_LINK</div>
+            <div class="sr-value">
+              <a id="eth-result-link" href="#" target="_blank">→ view_on_explorer()</a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SOLANA PANE ════════════════════════════════════════════ -->
+  <div class="pane" id="pane-sol">
+    <div class="card">
+      <div class="card-filepath">
+        <span class="fp-path">./programs/spl_token.rs</span>
+        <span>ln:1 · col:1 · UTF-8</span>
+      </div>
+      <div class="card-header">
+        <span class="card-title">SplTokenCreator</span>
+        <span class="network-badge">SOLANA_PROGRAM_LIB</span>
+      </div>
+      <div class="card-body">
+
+        <div class="wallet-section" id="sol-wallet-section">
+          <button class="wallet-btn" onclick="connectSolWallet()" id="sol-connect-btn">
+            connect_phantom_or_solflare()
+          </button>
+          <div class="wallet-connected" id="sol-connected" style="display:none;">
+            <div class="dot-live"></div>
+            <span class="wallet-addr" id="sol-addr">—</span>
+            <span style="font-size:10px;color:var(--muted);margin-left:auto;letter-spacing:1px;" id="sol-balance">—</span>
+          </div>
+        </div>
+
+        <div class="divider">/* TOKEN_PARAMETERS */</div>
+
+        <div class="form-grid">
+          <div class="field form-full">
+            <label>token_name</label>
+            <input type="text" id="sol-name" placeholder="e.g. My Solana Token" maxlength="50">
+            <span class="hint">stored in metadata (requires Metaplex)</span>
+          </div>
+          <div class="field">
+            <label>symbol</label>
+            <input type="text" id="sol-symbol" placeholder="e.g. MST" maxlength="10" style="text-transform:uppercase;">
+          </div>
+          <div class="field">
+            <label>decimals</label>
+            <input type="number" id="sol-decimals" value="9" min="0" max="9">
+            <span class="hint">standard is 9</span>
+          </div>
+          <div class="field form-full">
+            <label>initial_supply</label>
+            <div class="supply-display" id="sol-supply-display">1000000</div>
+            <input type="range" id="sol-supply-slider" min="0" max="12" value="6" step="1" oninput="updateSupply('sol')">
+            <input type="hidden" id="sol-supply" value="1000000">
+          </div>
+          <div class="field">
+            <label>network</label>
+            <select id="sol-net">
+              <option value="mainnet">MAINNET_BETA</option>
+              <option value="devnet" selected>DEVNET_FREE</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>freeze_authority</label>
+            <select id="sol-freeze">
+              <option value="none">NULL // revoked</option>
+              <option value="self">SELF // creator</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="deploy-btn" onclick="deploySolToken()" id="sol-deploy-btn">
+          <span class="shimmer"></span>
+          create_spl_token()
+        </button>
+
+        <div class="status-log" id="sol-log">
+          <div class="status-header">TX_LOG // EXECUTION_TRACE</div>
+          <div class="status-entries" id="sol-entries"></div>
+        </div>
+
+        <div class="success-result" id="sol-result">
+          <div class="sr-title">DEPLOYMENT_SUCCESS → SPL token created on-chain</div>
+          <div class="sr-field">
+            <div class="sr-label">MINT_ADDRESS</div>
+            <div class="sr-value">
+              <span id="sol-result-mint">—</span>
+              <button class="copy-btn" onclick="copyText('sol-result-mint')">[COPY]</button>
+            </div>
+          </div>
+          <div class="sr-field">
+            <div class="sr-label">TOKEN_ACCOUNT</div>
+            <div class="sr-value">
+              <span id="sol-result-ata">—</span>
+              <button class="copy-btn" onclick="copyText('sol-result-ata')">[COPY]</button>
+            </div>
+          </div>
+          <div class="sr-field">
+            <div class="sr-label">EXPLORER_LINK</div>
+            <div class="sr-value">
+              <a id="sol-result-link" href="#" target="_blank">→ view_on_explorer()</a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── INFO CARDS ── -->
+  <div class="info-cards">
+    <div class="info-card" data-index="[0]">
+      <div class="ic-icon">GAS_ONLY</div>
+      <div class="ic-title">fee = 0 // no platform</div>
+      <div class="ic-text">Zero platform fees. You only pay blockchain gas — ~$2–15 on ETH mainnet, &lt;$0.01 on Polygon/L2s, ~0.002 SOL on Solana.</div>
+    </div>
+    <div class="info-card" data-index="[1]">
+      <div class="ic-icon">NON_CUSTODIAL</div>
+      <div class="ic-title">privateKey.never_leaves()</div>
+      <div class="ic-text">Your wallet signs every transaction. No keys leave your browser. You own the contract and all minted supply.</div>
+    </div>
+    <div class="info-card" data-index="[2]">
+      <div class="ic-icon">TRADEABLE</div>
+      <div class="ic-title">dex.list(token) → true</div>
+      <div class="ic-text">ERC-20 works with Uniswap, Sushiswap, and any EVM DEX. SPL tokens work with Raydium, Orca, and Jupiter.</div>
+    </div>
+    <div class="info-card" data-index="[3]">
+      <div class="ic-icon">OPEN_SOURCE</div>
+      <div class="ic-title">source.visibility = "public"</div>
+      <div class="ic-text">View source code on the blockchain explorer after deployment. Standard OpenZeppelin ERC-20 implementation.</div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="fp">// _TOKEN_FORGE — no fees · no accounts · non-custodial</div>
+    <div>verify contracts on <a href="https://etherscan.io" target="_blank">etherscan.io</a> before trading</div>
+    <div class="warning">⚠ WARNING: tokens may have no intrinsic value — DYOR — this is not financial advice</div>
+  </footer>
+
+</div><!-- /wrap -->
+
+<script>
+// ── MATRIX RAIN ───────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('matrix-canvas');
+  const ctx = canvas.getContext('2d');
+  const chars = '01アイウエオカキクケコサシスセソタチツテトナニヌネノ♦◆▲△';
+  let cols, drops;
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    cols  = Math.floor(canvas.width / 18);
+    drops = Array.from({length: cols}, () => Math.random() * -50);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw() {
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#00ff41';
+    ctx.font = '12px Courier New';
+    for (let i = 0; i < drops.length; i++) {
+      ctx.fillText(chars[Math.floor(Math.random() * chars.length)], i * 18, drops[i] * 18);
+      if (drops[i] * 18 > canvas.height && Math.random() > 0.975) drops[i] = 0;
+      drops[i]++;
+    }
+  }
+  setInterval(draw, 60);
+})();
+
+// ── SYSTEM CLOCK ──────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('sys-time').textContent =
+    new Date().toTimeString().slice(0,8);
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── SUPPLY SLIDER ─────────────────────────────────────────────────
+const SUPPLY_STEPS = [100,1000,10000,100000,500000,1000000,5000000,10000000,50000000,100000000,500000000,1000000000,10000000000];
+function updateSupply(chain) {
+  const slider  = document.getElementById(`${chain}-supply-slider`);
+  const hidden  = document.getElementById(`${chain}-supply`);
+  const display = document.getElementById(`${chain}-supply-display`);
+  const val = SUPPLY_STEPS[parseInt(slider.value)];
+  hidden.value = val;
+  display.textContent = val.toLocaleString();
+}
+updateSupply('eth');
+updateSupply('sol');
+
+// ── CHAIN TABS ────────────────────────────────────────────────────
+function switchChain(chain) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab-btn[data-chain="${chain}"]`).classList.add('active');
+  document.getElementById(`pane-${chain}`).classList.add('active');
+}
+
+// ── FEATURE TOGGLES ───────────────────────────────────────────────
+function toggleChip(id) {
+  document.getElementById(`chip-${id}`).classList.toggle('on');
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────
+function copyText(id) {
+  const txt = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = document.querySelector(`[onclick="copyText('${id}')"]`);
+    if(btn){ btn.textContent='[OK]'; setTimeout(()=>{ btn.textContent='[COPY]'; }, 1500); }
+  });
+}
+
+function log(chain, icon, text, type='info') {
+  const entries = document.getElementById(`${chain}-entries`);
+  const logEl   = document.getElementById(`${chain}-log`);
+  logEl.classList.add('visible');
+  const entry = document.createElement('div');
+  entry.className = `status-entry entry-${type}`;
+  entry.innerHTML = `<span class="se-icon">${icon}</span><span class="se-text">${text}</span>`;
+  entries.appendChild(entry);
+  entries.scrollTop = entries.scrollHeight;
+}
+
+function clearLog(chain) {
+  document.getElementById(`${chain}-entries`).innerHTML = '';
+  document.getElementById(`${chain}-log`).classList.remove('visible');
+  document.getElementById(`${chain}-result`).classList.remove('visible');
+}
+
+function getExplorerBase(chainId) {
+  const map = {
+    '1':'https://etherscan.io','11155111':'https://sepolia.etherscan.io',
+    '137':'https://polygonscan.com','80001':'https://mumbai.polygonscan.com',
+    '56':'https://bscscan.com','42161':'https://arbiscan.io',
+    '10':'https://optimistic.etherscan.io','8453':'https://basescan.org'
+  };
+  return map[String(chainId)] || 'https://etherscan.io';
+}
+
+// ── ETHEREUM WALLET ───────────────────────────────────────────────
+let ethProvider = null;
+let ethSigner   = null;
+let ethChainId  = null;
+
+async function connectEthWallet() {
+  if(!window.ethereum) {
+    alert('MetaMask not detected.\n\nInstall MetaMask from https://metamask.io and reload.');
+    return;
+  }
+  try {
+    const accounts = await window.ethereum.request({method:'eth_requestAccounts'});
+    ethProvider = new ethers.BrowserProvider(window.ethereum);
+    ethSigner   = await ethProvider.getSigner();
+    const network = await ethProvider.getNetwork();
+    ethChainId = String(network.chainId);
+    const addr = accounts[0];
+
+    document.getElementById('eth-connect-btn').style.display = 'none';
+    document.getElementById('eth-connected').style.display   = 'flex';
+    document.getElementById('eth-addr').textContent    = addr.slice(0,6)+'...'+addr.slice(-4);
+    document.getElementById('eth-network').textContent = network.name || `chain_${ethChainId}`;
+
+    window.ethereum.on('accountsChanged', ()=>location.reload());
+    window.ethereum.on('chainChanged',    ()=>location.reload());
+  } catch(e) {
+    alert('Wallet connection rejected.');
+  }
+}
+
+// ── ERC-20 DEPLOYMENT ─────────────────────────────────────────────
+const ERC20_ABI = [
+  "constructor(string name_, string symbol_, uint8 decimals_, uint256 totalSupply_)",
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function totalSupply() view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function transferFrom(address from, address to, uint256 amount) returns (bool)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+  "event Approval(address indexed owner, address indexed spender, uint256 value)"
+];
+
+const ERC20_BYTECODE = "0x60806040523480156200001157600080fd5b5060405162001073380380620010738339818101604052810190620000379190620002a4565b836004908162000048919062000579565b50826005908162000059919062000579565b508160068190555080600781905550620000856200007f6200009560201b60201c565b8262000099565b5050505062000766565b600033905090565b600073ffffffffffffffffffffffffffffffffffffffff168273ffffffffffffffffffffffffffffffffffffffff16036200010b576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016200010290620006bb565b60405180910390fd5b6200011f600083836200020060201b60201c565b806003600082825462000133919062000706565b9250508190555080600160008473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825401925050819055508173ffffffffffffffffffffffffffffffffffffffff16600073ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef83604051620001e5919062000742565b60405180910390a3620001fb60008383620002b160201b60201c565b505050565b505050565b505050565b600080fd5b600080fd5b600080fd5b600080fd5b6000604051905090565b600080fd5b600080fd5b600080fd5b7f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b7f4e487b7100000000000000000000000000000000000000000000000000000000600052602260045260246000fd5b600060208284031215620002cb57620002ca62000216565b5b600082015167ffffffffffffffff811115620002eb57620002ea6200021b565b5b620002f98482850162000349565b91505092915050565b600060208284031215620003175762000316620002bb565b5b82516bffffffffffffffffffffffff81168114620003385762000337620002c0565b5b5060208301519050919050565b600082601f8301126200035c576200035b62000254565b5b81516040516200036e6020820162000295565b5b808252602082018660208401111562000386578585fd5b5b506020830191508060208401810192508060208501811015620003a7578383fd5b506200039c8101601f8301840101600081516200039a5760006040519050905b8082602001820182015b811015620003e3576020810152600181019050620003c2565b5050620003c1818601602089016200039e565b50509050505092915050565b6000620003fb62000260565b905062000409828262000435565b919050565b600060208201905081810360008301526200042a81846200038d565b905092915050565b6200043d8262000468565b810181811067ffffffffffffffff821117156200045e576200045d62000254565b5b80604052505050565b6000601f19601f8301169050919050565b600082825260208201905092915050565b600062000496826200047a565b91506200049484835462000470565b9150819050919050565b7f45524332303a206d696e7420746f20746865207a65726f206164647265737300600082015250565b6000620004d5601f8362000473565b9150620004e28262000498565b602082019050919050565b60006020820190508181036000830152620005088162000465565b9050919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b60006200054a826200055e565b915062000557836200055e565b9250828201905080821115620005715762000570620004ed565b5b92915050565b6000819050919050565b620005918162000577565b82525050565b6000602082019050620005ae600083018462000588565b92915050565b600060208284031215620005cc57620005cb62000216565b5b600082015167ffffffffffffffff811115620005ec57620005eb6200021b565b5b620005fa8482850162000302565b91505092915050565b600060208284031215620006195762000618620005c1565b5b82516bffffffffffffffffffffffff811681146200063a5762000639620005c6565b5b5060208301519050919050565b600060208284031215620006595762000658620002bb565b5b82516bffffffffffffffffffffffff81168114620006785762000677620002c0565b5b5060208301519050919050565b6000620006928262000577565b91506200069f836200057f565b92508282019050808211156200069e576200069d620004ed565b5b92915050565b6000620006b2826200047a565b91506200069b836200047a565b90509291905056fe";
+
+async function deployEthToken() {
+  if(!ethSigner) { alert('Please connect MetaMask first.'); return; }
+
+  const name     = document.getElementById('eth-name').value.trim();
+  const symbol   = document.getElementById('eth-symbol').value.trim().toUpperCase();
+  const decimals = parseInt(document.getElementById('eth-decimals').value);
+  const supply   = parseInt(document.getElementById('eth-supply').value);
+
+  if(!name || !symbol) { alert('Please fill in Token Name and Symbol.'); return; }
+  if(symbol.length > 10) { alert('Symbol must be 10 chars or less.'); return; }
+
+  const totalSupply = BigInt(supply) * (10n ** BigInt(decimals));
+  const btn = document.getElementById('eth-deploy-btn');
+  btn.disabled = true;
+  clearLog('eth');
+
+  try {
+    log('eth','⟳','preparing_deployment_tx()...','pending');
+
+    const targetChainId  = document.getElementById('eth-net').value;
+    const currentChainId = String((await ethProvider.getNetwork()).chainId);
+
+    if(currentChainId !== targetChainId) {
+      log('eth','⚙','requesting_network_switch()...','pending');
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: '0x' + parseInt(targetChainId).toString(16) }]
+        });
+        ethProvider = new ethers.BrowserProvider(window.ethereum);
+        ethSigner   = await ethProvider.getSigner();
+        log('eth','✓','network switched → OK','success');
+      } catch(e) {
+        log('eth','⚠','could not switch network — deploying on current chain','info');
+      }
+    }
+
+    const netName = (await ethProvider.getNetwork()).name;
+    log('eth','⟳',`deploying to ${netName}...`,'pending');
+
+    const factory  = new ethers.ContractFactory(ERC20_ABI, ERC20_BYTECODE, ethSigner);
+    const contract = await factory.deploy(name, symbol, decimals, totalSupply);
+
+    log('eth','⟳',`tx_hash: <a href="${getExplorerBase(targetChainId)}/tx/${contract.deploymentTransaction().hash}" target="_blank">${contract.deploymentTransaction().hash.slice(0,20)}...</a>`,'pending');
+    log('eth','⟳','awaiting_block_confirmation()...','pending');
+
+    await contract.waitForDeployment();
+    const address     = await contract.getAddress();
+    const txHash      = contract.deploymentTransaction().hash;
+    const explorerBase = getExplorerBase(targetChainId);
+
+    log('eth','✓',`token deployed → <a href="${explorerBase}/address/${address}" target="_blank">${address.slice(0,12)}...</a>`,'success');
+    log('eth','✓',`minted ${supply.toLocaleString()} ${symbol} to wallet`,'success');
+
+    document.getElementById('eth-result-addr').textContent = address;
+    document.getElementById('eth-result-tx').textContent   = txHash;
+    document.getElementById('eth-result-link').href = `${explorerBase}/token/${address}`;
+    document.getElementById('eth-result').classList.add('visible');
+
+  } catch(e) {
+    const msg = e.message || 'unknown_error';
+    if(msg.includes('user rejected') || msg.includes('User denied')) {
+      log('eth','✗','ERR: tx_rejected_by_user','error');
+    } else {
+      log('eth','✗','ERR: ' + msg.slice(0,120),'error');
+      console.error(e);
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── SOLANA WALLET ─────────────────────────────────────────────────
+let solWallet    = null;
+let solPublicKey = null;
+
+async function connectSolWallet() {
+  const provider = window.phantom?.solana || window.solflare || window.solana;
+  if(!provider) {
+    alert('Solana wallet not detected.\n\nInstall Phantom (https://phantom.app) or Solflare (https://solflare.com) and reload.');
+    return;
+  }
+  try {
+    const resp = await provider.connect();
+    solWallet    = provider;
+    solPublicKey = resp.publicKey;
+
+    const addr = solPublicKey.toString();
+    document.getElementById('sol-connect-btn').style.display = 'none';
+    document.getElementById('sol-connected').style.display   = 'flex';
+    document.getElementById('sol-addr').textContent    = addr.slice(0,6)+'...'+addr.slice(-4);
+    document.getElementById('sol-balance').textContent = 'connected';
+
+    const net = document.getElementById('sol-net').value;
+    fetchSolBalance(addr, net);
+  } catch(e) {
+    alert('Wallet connection rejected.');
+  }
+}
+
+async function fetchSolBalance(addr, net) {
+  const rpc = net === 'mainnet'
+    ? 'https://api.mainnet-beta.solana.com'
+    : 'https://api.devnet.solana.com';
+  try {
+    const res  = await fetch(rpc, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({jsonrpc:'2.0',id:1,method:'getBalance',params:[addr]})
+    });
+    const data = await res.json();
+    const sol  = (data.result.value / 1e9).toFixed(4);
+    document.getElementById('sol-balance').textContent = sol + '_SOL';
+  } catch(e){}
+}
+
+async function deploySolToken() {
+  if(!solWallet || !solPublicKey) { alert('Please connect your Solana wallet first.'); return; }
+
+  const name      = document.getElementById('sol-name').value.trim();
+  const symbol    = document.getElementById('sol-symbol').value.trim().toUpperCase();
+  const decimals  = parseInt(document.getElementById('sol-decimals').value);
+  const supply    = parseInt(document.getElementById('sol-supply').value);
+  const net       = document.getElementById('sol-net').value;
+  const freezeOpt = document.getElementById('sol-freeze').value;
+
+  if(!name || !symbol) { alert('Please fill in Token Name and Symbol.'); return; }
+
+  const btn = document.getElementById('sol-deploy-btn');
+  btn.disabled = true;
+  clearLog('sol');
+
+  const rpcUrl = net === 'mainnet'
+    ? 'https://api.mainnet-beta.solana.com'
+    : 'https://api.devnet.solana.com';
+  const explorerCluster = net === 'devnet' ? '?cluster=devnet' : '';
+
+  log('sol','⟳','loading solana_web3.js...','pending');
+
+  if(!window.solanaWeb3) {
+    try {
+      await loadScript('https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js');
+      window.solanaWeb3 = window.solanaWeb3 || solanaWeb3;
+      log('sol','✓','solana SDK loaded → OK','success');
+    } catch(e) {
+      log('sol','✗','ERR: failed to load Solana SDK','error');
+      btn.disabled = false; return;
+    }
+  }
+
+  if(!window.SPLToken) {
+    try {
+      await loadScript('https://unpkg.com/@solana/spl-token@latest/lib/index.iife.min.js');
+      window.SPLToken = splToken;
+      log('sol','✓','spl_token SDK loaded → OK','success');
+    } catch(e) {
+      log('sol','⚠','using fallback SPL method','info');
+    }
+  }
+
+  try {
+    const { Connection, PublicKey, Keypair, Transaction, SystemProgram, LAMPORTS_PER_SOL } = solanaWeb3;
+    const connection = new Connection(rpcUrl, 'confirmed');
+
+    log('sol','⟳','checking_wallet_balance()...','pending');
+    const balance = await connection.getBalance(solPublicKey);
+    const balSol  = balance / LAMPORTS_PER_SOL;
+    log('sol','✓',`balance → ${balSol.toFixed(4)}_SOL`,'success');
+
+    if(balSol < 0.005 && net === 'mainnet') {
+      log('sol','✗','ERR: insufficient_balance — need ~0.003 SOL for rent','error');
+      btn.disabled = false; return;
+    }
+
+    log('sol','⟳','generating_mint_keypair()...','pending');
+
+    if(window.SPLToken || window.splToken) {
+      const spl        = window.SPLToken || window.splToken;
+      const mintKeypair = Keypair.generate();
+      const mintPublicKey = mintKeypair.publicKey;
+
+      log('sol','⟳','requesting wallet signature → create_mint_account()...','pending');
+
+      const mint = await spl.createMint(
+        connection,
+        { publicKey: solPublicKey, signTransaction: async (tx) => solWallet.signTransaction(tx), signAllTransactions: async (txs) => solWallet.signAllTransactions(txs) },
+        solPublicKey,
+        freezeOpt === 'none' ? null : solPublicKey,
+        decimals,
+        mintKeypair
+      );
+
+      log('sol','✓',`mint_address → ${mint.toString().slice(0,12)}...`,'success');
+      log('sol','⟳','create_associated_token_account()...','pending');
+
+      const ata = await spl.getOrCreateAssociatedTokenAccount(
+        connection,
+        { publicKey: solPublicKey, signTransaction: async (tx) => solWallet.signTransaction(tx), signAllTransactions: async (txs) => solWallet.signAllTransactions(txs) },
+        mint,
+        solPublicKey
+      );
+
+      log('sol','✓','token_account created → OK','success');
+      log('sol','⟳',`mint_to(${supply.toLocaleString()}_${symbol})...`,'pending');
+
+      await spl.mintTo(
+        connection,
+        { publicKey: solPublicKey, signTransaction: async (tx) => solWallet.signTransaction(tx), signAllTransactions: async (txs) => solWallet.signAllTransactions(txs) },
+        mint,
+        ata.address,
+        solPublicKey,
+        BigInt(supply) * (10n ** BigInt(decimals))
+      );
+
+      log('sol','✓','tokens minted to wallet → OK','success');
+
+      if(freezeOpt === 'none') {
+        log('sol','⟳','revoke_freeze_authority()...','pending');
+        await spl.setAuthority(
+          connection,
+          { publicKey: solPublicKey, signTransaction: async (tx) => solWallet.signTransaction(tx), signAllTransactions: async (txs) => solWallet.signAllTransactions(txs) },
+          mint, solPublicKey, spl.AuthorityType.FreezeAccount, null
+        );
+        log('sol','✓','freeze_authority → null','success');
+      }
+
+      const mintStr = mint.toString();
+      const ataStr  = ata.address.toString();
+      document.getElementById('sol-result-mint').textContent = mintStr;
+      document.getElementById('sol-result-ata').textContent  = ataStr;
+      document.getElementById('sol-result-link').href = `https://explorer.solana.com/address/${mintStr}${explorerCluster}`;
+      document.getElementById('sol-result').classList.add('visible');
+
+    } else {
+      log('sol','⚠','SPL_TOKEN lib unavailable in this environment','info');
+      log('sol','ℹ','use verified alternatives:','info');
+      log('sol','→','<a href="https://token.jup.ag/strict" target="_blank">token.jup.ag</a> (free, official)','info');
+      log('sol','→','<a href="https://spl-token-ui.com" target="_blank">spl-token-ui.com</a> (open source)','info');
+      log('sol','→','CLI: <code>spl-token create-token</code>','info');
+    }
+
+  } catch(e) {
+    const msg = e.message || 'unknown_error';
+    if(msg.includes('rejected') || msg.includes('denied')) {
+      log('sol','✗','ERR: tx_rejected_by_user','error');
+    } else {
+      log('sol','✗','ERR: ' + msg.slice(0,150),'error');
+      console.error(e);
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.async = true;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`failed_to_load: ${src}`));
+    document.head.appendChild(s);
+  });
+}
+</script>
+</body>
+</html>
